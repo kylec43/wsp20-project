@@ -221,7 +221,6 @@ app.post('/b/checkout', authAndRedirectSignIn, async (req, res) => {
 
     const data = {
         uid: req.decodedIdToken.uid,
-        timestamp: null,
         cart: req.session.cart
     }
 
