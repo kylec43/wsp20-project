@@ -34,7 +34,10 @@ app.use(session(
     secret: 'string',
     name: '__session',
     saveUninitialized: false,
-    resave: false
+    resave: false,
+    secure: true,
+    maxAge: 1000*60*60*2,
+    rolling: true
     }
 ))
 
@@ -51,9 +54,10 @@ var firebaseConfig = {
     appId: "1:782407892888:web:cb96d70f49a13d12e675ed"
   };
   // Initialize Firebase
-  firebase.initializeApp(firebaseConfig);
+firebase.initializeApp(firebaseConfig);
 
-  const Constants = require('./myconstants.js');
+const adminUtil = require('./adminUtil.js');
+const Constants = require('./myconstants.js');
 
 app.get('/', auth, async (req, res) => {
     const cartCount = req.session.cart ? req.session.cart.length : 0;
@@ -66,10 +70,10 @@ app.get('/', auth, async (req, res) => {
             products.push({id : doc.id, data: doc.data()});
         })
         res.setHeader('Cache-Control', 'private');
-        res.render('storefront.ejs', {error: false, products, user: req.user, cartCount});
+        res.render('storefront.ejs', {error: false, products, user: req.decodedIdToken, cartCount});
     } catch(e) {
         res.setHeader('Cache-Control', 'private');
-        res.render('storefront.ejs', {error: e, user: req.user, cartCount})
+        res.render('storefront.ejs', {error: e, user: req.decodedIdToken, cartCount})
     }
 })
 
@@ -77,13 +81,13 @@ app.get('/', auth, async (req, res) => {
 app.get('/b/about', auth, (req, res) => {
     const cartCount = req.session.cart ? req.session.cart.length : 0;
     res.setHeader('Cache-Control', 'private');
-    res.render('about.ejs', {user: req.user, cartCount});
+    res.render('about.ejs', {user: req.decodedIdToken, cartCount});
 })
 
 app.get('/b/contact', auth, (req, res) => {
     const cartCount = req.session.cart ? req.session.cart.length : 0;
     res.setHeader('Cache-Control', 'private');
-    res.render('contact.ejs', {user: req.user, cartCount});
+    res.render('contact.ejs', {user: req.decodedIdToken, cartCount});
 })
 
 app.get('/b/signin', (req, res) => {
@@ -98,7 +102,13 @@ app.post('/b/signin', async (req, res) => {
     const auth = firebase.auth();
 
     try {
+        firebase.auth().setPersistence(firebase.auth.Auth.Persistence.NONE);        
         const userRecord = await auth.signInWithEmailAndPassword(email, password);
+        const idToken = await userRecord.user.getIdToken();
+        await auth.signOut();
+
+        req.session.idToken = idToken;
+
         if(userRecord.user.email === Constants.SYSADMINEMAIL)
         {
             res.setHeader('Cache-Control', 'private');
@@ -119,26 +129,32 @@ app.post('/b/signin', async (req, res) => {
         }
     } catch(e) {
         res.setHeader('Cache-Control', 'private');
-        res.render('signin', {error: e, user: req.user, cartCount: 0});
+        res.render('signin', {error: e, user: null, cartCount: 0});
     }
 })
 
 app.get('/b/signout', async (req, res) => {
 
-    try {
-        req.session.cart = null; //empty the cart
-        await firebase.auth().signOut();
-        res.redirect('/');
-    } catch(e) {
-        res.send('Error: sign out');
-    }
+
+    req.session.destroy(err => {
+        if (err)
+        {
+            req.session = null;
+            res.send('Error: sign out (session.destroy error)')
+        }
+        else
+        {
+            res.redirect('/');
+        }
+    });
+
 })
 
 
 app.get('/b/profile', authAndRedirectSignIn, (req, res) => {
     const cartCount = req.session.cart ? req.session.cart.length : 0;
     res.setHeader('Cache-Control', 'private');
-    res.render('profile', {user: req.user, cartCount, orders: false});
+    res.render('profile', {user: req.decodedIdToken, cartCount, orders: false});
 })
 
 
@@ -188,7 +204,7 @@ app.get('/b/shoppingcart', authAndRedirectSignIn, (req, res) => {
         cart = ShoppingCart.deserialize(req.session.cart);
     }
     res.setHeader('Cache-Control', 'private');
-    res.render('shoppingcart.ejs', {message: false, cart, user: req.user, cartCount: cart.contents.length});
+    res.render('shoppingcart.ejs', {message: false, cart, user: req.decodedIdToken, cartCount: cart.contents.length});
 })
 
 app.post('/b/checkout', authAndRedirectSignIn, async (req, res) => {
@@ -204,23 +220,22 @@ app.post('/b/checkout', authAndRedirectSignIn, async (req, res) => {
     // cart = [{product, qty}] //contents in shoppingcart
 
     const data = {
-        uid: req.user.uid,
-        timestamp: firebase.firestore.Timestamp.fromDate(new Date()),
+        uid: req.decodedIdToken.uid,
+        timestamp: null,
         cart: req.session.cart
     }
 
     try {
-        const collection = firebase.firestore().collection(Constants.COLL_ORDERS);
-        await collection.doc().set(data);
+        await adminUtil.checkOut(data);
         req.session.cart = null;
         res.setHeader('Cache-Control', 'private');
         return res.render('shoppingcart.ejs', 
-            {message: 'Checked Out Successfully', cart: new ShoppingCart(), user: req.user, cartCount: 0});
+            {message: 'Checked Out Successfully', cart: new ShoppingCart(), user: req.decodedIdToken, cartCount: 0});
     } catch (e) {
         const cart = ShoppingCart.deserialize(req.session.cart);
         res.setHeader('Cache-Control', 'private');
         return res.render('shoppingcart.ejs', 
-            {message: 'Check Out Failed. Try Again Later!', cart, user: req.user, cartCount: cart.contents.length});
+            {message: 'Check Out Failed. Try Again Later!', cart, user: req.decodedIdToken, cartCount: cart.contents.length});
 
     }
 })
@@ -229,14 +244,9 @@ app.post('/b/checkout', authAndRedirectSignIn, async (req, res) => {
 app.get('/b/orderhistory', authAndRedirectSignIn, async (req, res) => {
     try {
 
-        const collection = firebase.firestore().collection(Constants.COLL_ORDERS);
-        let orders = [];
-        const snapshot = await collection.where("uid", "==", req.user.uid).orderBy("timestamp").get()
-        snapshot.forEach(doc => {
-            orders.push(doc.data())
-        })
+        const orders = await adminUtil.getOrderHistory(req.decodedIdToken);
         res.setHeader('Cache-Control', 'private');
-        res.render('profile.ejs', {user: req.user, cartCount: 0, orders})
+        res.render('profile.ejs', {user: req.decodedIdToken, cartCount: 0, orders})
     } catch(e) {
         res.setHeader('Cache-Control', 'private');
         res.send("<h1>Order History Error</h1>");
@@ -245,29 +255,46 @@ app.get('/b/orderhistory', authAndRedirectSignIn, async (req, res) => {
 
 //middleware
 
-function authAndRedirectSignIn(req, res, next)
+async function authAndRedirectSignIn(req, res, next)
 {
-    const user = firebase.auth().currentUser;
-    if (!user)
-    {
-        res.setHeader('Cache-Control', 'private');
-        return res.redirect('/b/signin')
+
+    try {
+        const decodedIdToken = await adminUtil.verifyIdToken(req.session.idToken);
+        if (decodedIdToken.uid)
+        {
+            req.decodedIdToken = decodedIdToken;
+            return next();
+        }
+    } catch (e) {
+        console.log('authAndRedirect error', e)    
     }
-    else
-    {
-        req.user = user;
-        return next();
-    }
+
+    res.setHeader('Cache-Control', 'private');
+    return res.redirect('/b/signin');
+
 }
 
 
-function auth(req, res, next)
+async function auth(req, res, next)
 {
-    req.user = firebase.auth().currentUser;
+
+    try {
+        if (req.session && req.session.idToken)
+        {
+            const decodedIdToken = await adminUtil.verifyIdToken(req.session.idToken)
+            req.decodedIdToken = decodedIdToken
+        }
+        else
+        {
+            req.decodedIdToken = null;
+        }
+    } catch(e) {
+        req.decodedIdToken = null;
+    }
+
     next();
 }
 
-const adminUtil = require('./adminUtil.js');
 
 //admin api
 
@@ -284,16 +311,27 @@ app.get('/admin/listUsers', authSysAdmin, (req, res) => {
     return adminUtil.listUsers(req, res);
 })
 
-function authSysAdmin(req, res, next) 
+async function authSysAdmin(req, res, next) 
 {
-    const user = firebase.auth().currentUser;
-    if (!user || !user.email || user.email !== Constants.SYSADMINEMAIL)
-    {
+
+    try {
+        const decodedIdToken = await adminUtil.verifyIdToken(req.session.idToken);
+        if (!decodedIdToken || !decodedIdToken.email || decodedIdToken.email !== Constants.SYSADMINEMAIL) 
+        {
+            return send('<h1>System Admin Page: Access Denied!</h1>');
+        }
+        if (decodedIdToken.uid)
+        {
+            req.decodedIdToken = decodedIdToken;
+            return next();
+        }
+
         return res.send('<h1>System Admin Page: Access Denied!</h1>');
-    } else 
-    {
-        return next();
+        
+    } catch (e) {
+        return res.send('<h1>System Admin Page: Access Denied!</h1>');
     }
+
 }
 
 //test code
