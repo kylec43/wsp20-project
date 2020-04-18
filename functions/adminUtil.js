@@ -89,11 +89,43 @@ async function checkOut(data)
 
 }
 
+async function updateCart(data, id)
+{
+    try {
+        await admin.firestore().collection('shopping_carts').doc(id).set(data);
+    } catch (e) {
+        throw e;
+    }
+}
+
+async function getCartData(id)
+{
+    try {
+        const collection = admin.firestore().collection('shopping_carts');
+        const cart = await collection.doc(id).get();
+        console.log("%%%%%%000000" + JSON.stringify(cart.data().cart))
+        return cart.data().cart;
+    } catch (e) {
+        throw e;
+    }
+}
+
+async function deleteCart(id)
+{
+    try {
+        await admin.firestore().collection('shopping_carts').doc(id).delete();
+    } catch (e) {
+        throw e;
+    }
+}
 
 module.exports = {
     createUser,
     listUsers,
     verifyIdToken,
     getOrderHistory,
-    checkOut
+    checkOut,
+    updateCart,
+    getCartData,
+    deleteCart
 }

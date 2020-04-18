@@ -31,13 +31,13 @@ const session = require('express-session');
 
 app.use(session(
     {
-    secret: 'string',
+    secret: 'string13241234',
     name: '__session',
     saveUninitialized: false,
     resave: false,
     secure: true,
     maxAge: 1000*60*60*2,
-    rolling: true
+    rolling: true,
     }
 ))
 
@@ -59,8 +59,8 @@ firebase.initializeApp(firebaseConfig);
 const adminUtil = require('./adminUtil.js');
 const Constants = require('./myconstants.js');
 
-app.get('/', auth, async (req, res) => {
-    const cartCount = req.session.cart ? req.session.cart.length : 0;
+app.get('/', auth, getCartMiddleWare, async (req, res) => {
+    const cartCount = req.ShoppingCart ? req.ShoppingCart.length : 0;
     const coll = firebase.firestore().collection(Constants.COLL_PRODUCTS);
 
     try {
@@ -78,14 +78,14 @@ app.get('/', auth, async (req, res) => {
 })
 
 
-app.get('/b/about', auth, (req, res) => {
-    const cartCount = req.session.cart ? req.session.cart.length : 0;
+app.get('/b/about', auth, getCartMiddleWare, (req, res) => {
+    const cartCount = req.ShoppingCart ? req.ShoppingCart.length : 0;
     res.setHeader('Cache-Control', 'private');
     res.render('about.ejs', {user: req.decodedIdToken, cartCount});
 })
 
-app.get('/b/contact', auth, (req, res) => {
-    const cartCount = req.session.cart ? req.session.cart.length : 0;
+app.get('/b/contact', auth, getCartMiddleWare, (req, res) => {
+    const cartCount = req.ShoppingCart ? req.ShoppingCart.length : 0;
     res.setHeader('Cache-Control', 'private');
     res.render('contact.ejs', {user: req.decodedIdToken, cartCount});
 })
@@ -95,7 +95,7 @@ app.get('/b/signin', (req, res) => {
     res.render('signin.ejs', {error: false, user: req.user, cartCount: 0});
 })
 
-app.post('/b/signin', async (req, res) => {
+app.post('/b/signin', getCartMiddleWare, async (req, res) => {
     const email = req.body.email;
     const password = req.body.password;
 
@@ -116,7 +116,7 @@ app.post('/b/signin', async (req, res) => {
         }
         else
         {
-            if (!req.session.cart)
+            if (!req.ShoppingCart)
             {
                 res.setHeader('Cache-Control', 'private');
                 res.redirect('/');
@@ -129,7 +129,7 @@ app.post('/b/signin', async (req, res) => {
         }
     } catch(e) {
         res.setHeader('Cache-Control', 'private');
-        res.render('signin', {error: e, user: null, cartCount: 0});
+        res.render('signin.ejs', {error: e, user: null, cartCount: 0});
     }
 })
 
@@ -151,8 +151,8 @@ app.get('/b/signout', async (req, res) => {
 })
 
 
-app.get('/b/profile', authAndRedirectSignIn, (req, res) => {
-    const cartCount = req.session.cart ? req.session.cart.length : 0;
+app.get('/b/profile', authAndRedirectSignIn, getCartMiddleWare, (req, res) => {
+    const cartCount = req.ShoppingCart ? req.ShoppingCart.length : 0;
     res.setHeader('Cache-Control', 'private');
     res.render('profile', {user: req.decodedIdToken, cartCount, orders: false});
 })
@@ -167,48 +167,66 @@ app.get('/b/signup', (req, res) => {
 
 const ShoppingCart = require('./model/ShoppingCart.js')
 
-app.post('/b/add2cart', async (req, res) => {
-    const id = req.body.docId;
+app.post('/b/add2cart', auth, getCartMiddleWare, async (req, res) => {
 
+    if(!req.decodedIdToken)
+    {
+        res.setHeader('Cache-Control', 'private');
+        return res.render('signin.ejs', {error: "Please sign in to add a product to your shopping cart.", user: req.user, cartCount: 0});
+    }
+
+    const id = req.body.docId;
+    console.log('=========111111===============');
     const collection = firebase.firestore().collection(Constants.COLL_PRODUCTS);
     try {
         const doc = await collection.doc(id).get();
+        console.log('=========2222222222===============');
+
         let cart;
-        if (!req.session.cart) {
+        if (!req.ShoppingCart) {
+            console.log('---------------empty!-----------------')
             //first time add to cart
-            cart = new ShoppingCart()
+            cart = new ShoppingCart();
         } else {
-            cart = ShoppingCart.deserialize(req.session.cart);
+            cart = ShoppingCart.deserialize(req.ShoppingCart);
         }
+
+        console.log('=========3333333===============');
 
         const {name, price, summary, image, image_url} = doc.data();
         cart.add({id, name, price, summary, image, image_url});
 
-        req.session.cart = cart.serialize();
+        req.ShoppingCart = cart.serialize();
+
+        console.log('=========4444444===============');
+
+        var data = {cart: req.ShoppingCart};
+        await adminUtil.updateCart(data, req.decodedIdToken.uid);
+        console.log('=========55555555555555==============');
 
         res.setHeader('Cache-Control', 'private');
-        res.redirect('/b/shoppingcart');
+        return res.redirect('/b/shoppingcart');
 
     } catch(e) {
         res.setHeader('Cache-Control', 'private');
-        res.send(JSON.stringify(e));
+        return res.send(JSON.stringify(e));
     }
 })
 
-app.get('/b/shoppingcart', authAndRedirectSignIn, (req, res) => {
+app.get('/b/shoppingcart', authAndRedirectSignIn, getCartMiddleWare, async (req, res) => {
 
     let cart;
-    if (!req.session.cart) {
+    if (!req.ShoppingCart) {
         cart = new ShoppingCart();
     } else {
-        cart = ShoppingCart.deserialize(req.session.cart);
+        cart = ShoppingCart.deserialize(req.ShoppingCart);
     }
     res.setHeader('Cache-Control', 'private');
     res.render('shoppingcart.ejs', {message: false, cart, user: req.decodedIdToken, cartCount: cart.contents.length});
 })
 
-app.post('/b/checkout', authAndRedirectSignIn, async (req, res) => {
-    if (!req.session.cart)
+app.post('/b/checkout', authAndRedirectSignIn, getCartMiddleWare, async (req, res) => {
+    if (!req.ShoppingCart)
     {
         res.setHeader('Cache-Control', 'private');
         return res.send('Shopping Cart is Empty');
@@ -221,17 +239,18 @@ app.post('/b/checkout', authAndRedirectSignIn, async (req, res) => {
 
     const data = {
         uid: req.decodedIdToken.uid,
-        cart: req.session.cart
+        cart: req.ShoppingCart
     }
 
     try {
         await adminUtil.checkOut(data);
-        req.session.cart = null;
+        adminUtil.deleteCart(req.decodedIdToken.uid);
+
         res.setHeader('Cache-Control', 'private');
         return res.render('shoppingcart.ejs', 
             {message: 'Checked Out Successfully', cart: new ShoppingCart(), user: req.decodedIdToken, cartCount: 0});
     } catch (e) {
-        const cart = ShoppingCart.deserialize(req.session.cart);
+        const cart = ShoppingCart.deserialize(req.ShoppingCart);
         res.setHeader('Cache-Control', 'private');
         return res.render('shoppingcart.ejs', 
             {message: 'Check Out Failed. Try Again Later!', cart, user: req.decodedIdToken, cartCount: cart.contents.length});
@@ -290,8 +309,49 @@ async function auth(req, res, next)
     } catch(e) {
         req.decodedIdToken = null;
     }
+    return next();
+}
 
-    next();
+
+async function getCartMiddleWare(req, res, next)
+{
+
+    try {
+        if (req.decodedIdToken.uid)
+        {
+            req.ShoppingCart = null;
+
+            cart_data = await adminUtil.getCartData(req.decodedIdToken.uid);
+            console.log("%%%%%%11111" + JSON.stringify(cart_data));
+
+            if(cart_data)
+            {
+                console.log("%%%%%%22222" + JSON.stringify(cart_data));
+                cart = new ShoppingCart();
+                cart_data.forEach(d => {
+                    for(i = 0; i < d.qty; i++)
+                    {
+                        cart.add({id: d.product.id, name: d.product.name, price: d.product.price, summary: d.product.summary, image: d.product.image, image_url: d.product.image_url});
+                    }
+                })
+
+                req.ShoppingCart = cart.serialize();
+
+                console.log("%%%%%%%3333333" + JSON.stringify(req.ShoppingCart));
+
+            }
+        }
+        else
+        {
+            console.log('@@@@@@@UID NOT FOUND!@@@@@@@@')
+            req.ShoppingCart = null;
+        }
+    } catch(e) {
+        console.log('@@@@@@@ERRRORRR!@@@@@@@@')
+        req.ShoppingCart = null;
+    }
+
+    return next();
 }
 
 
