@@ -26,10 +26,10 @@ async function createUser(req, res)
         await admin.auth().createUser(
             {email, password, displayName, phoneNumber, photoURL}
         )
-        res.render('signin.ejs', {page: 'signin', user: false, error: 'Account created! Sign in please', cartCount: 0});
+        return res.render('signin.ejs', {page: 'signin', user: false, error: 'Account created! Sign in please', cartCount: 0});
 
     } catch (e) {
-        res.render('signup.ejs', {error: e, user: false, page: 'signup', cartCount: 0});
+        return res.render('signup.ejs', {error: e, user: false, page: 'signup', cartCount: 0});
     }
 
 }
@@ -39,11 +39,11 @@ async function listUsers(req, res)
     try {
 
         const userRecord = await admin.auth().listUsers();
-        res.render('admin/listUsers.ejs', {users: userRecord.users, error: false});
+        return res.render('admin/listUsers.ejs', {users: userRecord.users, error: false});
 
     } catch (e) {
 
-        res.render('admin/listUsers.ejs', {users: false, error: e});
+        return res.render('admin/listUsers.ejs', {users: false, error: e});
     }
 }
 

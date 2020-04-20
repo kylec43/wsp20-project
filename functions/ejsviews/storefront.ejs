@@ -15,27 +15,148 @@
 
     <%- include('partials/nav.ejs', {page: 'storefront'}, user) %>
 
+
+    <% if (signedIn_cart_not_empty) { %>
+
+        <style>
+            /* Modal Content */
+            .modal-content {
+            position: relative;
+            background-color: #fefefe;
+            margin: auto;
+            border: 2px solid #000;
+            width: 40%;
+            box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19);
+            animation-name: animatetop;
+            animation-duration: 1.0s
+            }
+            
+            /*Animation*/
+            @keyframes animatetop {
+            from {top:-300px; opacity:0}
+            to {top:0; opacity:1}
+            }
+            
+            /* The Close Button */
+            .close {
+            color: white;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            }
+            
+            .close:hover,
+            .close:focus {
+            color: #000;
+            text-decoration: none;
+            cursor: pointer;
+            }
+            
+            .modal-header {
+            padding: 2px 16px;
+            background-color: blue;
+            color: white;
+            }
+            
+            .modal-body {padding: 2px 16px;}
+        </style>
+
+
+        <div id="myModal">
+            <div class="modal-content">
+                <div class="modal-header" style="text-align: center;">
+                    <h2>Welcome back<%= user.name ? " " + user.name : "";  %>!</h2>
+                    <span class="close" id="close_button">&times;</span>
+                </div>
+                <div class="modal-body" style="text-align: center;">
+                    <br>
+                    <h5>You appear to have <%= products.length %> item(s) in your shopping cart</h5>
+                    <br>
+                    <button onclick="window.location.href = '/b/ShoppingCart';">Go to my shopping cart</button>
+                    <br>
+                    <br>
+                </div>
+
+            </div>
+        </div>
+
+
+        <script>
+
+            function hide_modal()
+            {
+                var modal = document.getElementById('myModal');
+                modal.style.display="none";
+            }
+
+            var close_button = document.getElementById("close_button");
+            close_button.onclick = hide_modal;
+
+        </script>
+
+    <% } %>
+
+
     <h1>My Store</h1>
 
     <% if (error) { %>
         <p style="color: red"><%= JSON.stringify(error) %></p>
 
     <% } else { %>
-        <% for (let p of products) { %>
 
-            <div class="card" style="display: inline-block;">
-                <img src="<%= p.data.image_url %>" class="card-img-top" style="width: 300px; height: 300px">
-                <div class="card-body">
-                    <h5 class="card-title"><%= p.data.name %></h5>
-                    <p class="card-text">$<%= p.data.price %><br><%= p.data.summary %></p>
-                    <form action="/b/add2cart" method="post">
-                        <input type="hidden" name="docId" value="<%= p.id %>">
-                        <button type="submit" class="btn btn-primary">Add to ShoppingCart</button>
-                    </form>
+        <div style="text-align: center;">
+
+            <% for (let p of products) { %>
+
+                <div class="card" style="display: inline-block;">
+                    <img src="<%= p.data.image_url %>" class="card-img-top" style="width: 200px; height: 200px">
+                    <div class="card-body">
+                        <h5 class="card-title"><%= p.data.name %></h5>
+                        <p class="card-text">$<%= p.data.price %><br><%= p.data.summary %></p>
+                        <form action="/b/add2cart" method="post">
+                            <input type="hidden" name="docId" value="<%= p.id %>">
+                            <button type="submit" class="btn btn-primary">Add to ShoppingCart</button>
+                        </form>
+                    </div>
                 </div>
-            </div>
-        <% } %>
+            <% } %>
 
+            <hr size="5" style="background: black">
+            <br>
+
+            
+            <style>
+                .hover_button {
+                    background-color: white; 
+                    color: black; 
+                    border: 2px solid #4CAF50;
+                    padding-left: 10px;
+                }
+                
+                .hover_button:hover {
+                    background-color: #4CAF50;
+                    color: white;
+                    padding-left: 10px;
+                }
+            </style>
+
+            <% if (!hide_prev_button) { %>
+                <form method="POST" style="display: inline">
+                    <input name="first_product" type="hidden" value="<%= products[0].data.image%>">
+                    <button class="hover_button" type="submit">Previous Page</button>
+                </form>
+            <% } %>
+
+            <% if (!hide_next_button) { %>
+                <form method="POST" style="display: inline">
+                    <input name="last_product" type="hidden" value="<%= products[products.length-1].data.image%>">
+                    <button class="hover_button" type="submit">Next Page</button>
+                </form>
+            <% } %>
+
+            <br><br><br>
+
+        </div>
     <% } %>
 
 

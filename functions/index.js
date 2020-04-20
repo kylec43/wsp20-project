@@ -62,18 +62,117 @@ const Constants = require('./myconstants.js');
 app.get('/', auth, getCartMiddleWare, async (req, res) => {
     const cartCount = req.ShoppingCart ? req.ShoppingCart.length : 0;
     const coll = firebase.firestore().collection(Constants.COLL_PRODUCTS);
+    
+    try {
+        let products = [];
+        const snapshot = await coll.orderBy("image").limit(11).get();
+
+        /*If there are less than 11 products, that means there are no more products*/
+        let hide_next_button = false;
+        if(snapshot.size < 11)
+        {
+            hide_next_button = true;
+        }
+ 
+        snapshot.forEach(doc => {
+            products.push({id : doc.id, data: doc.data()});
+        });
+
+        /*To display 10 elements*/
+        if(products.length === 11)
+        {
+            products.pop();
+        }
+
+        let hide_prev_button = true;
+
+        signedIn_cart_not_empty = req.session.signedIn_cart_not_empty ? true : false;
+        req.session.signedIn_cart_not_empty = null;
+
+        res.setHeader('Cache-Control', 'private');
+        return res.render('storefront.ejs', {error: false, products, user: req.decodedIdToken, cartCount, 
+                                            hide_next_button, hide_prev_button, signedIn_cart_not_empty});
+    } catch(e) {
+        res.setHeader('Cache-Control', 'private');
+        return res.render('storefront.ejs', {error: e, user: req.decodedIdToken, cartCount, signedIn_cart_not_empty: false})
+    }
+})
+
+
+app.post('/', auth, getCartMiddleWare, async (req, res) => {
+    const cartCount = req.ShoppingCart ? req.ShoppingCart.length : 0;
+    const coll = firebase.firestore().collection(Constants.COLL_PRODUCTS);
+
+    const first_product = req.body.first_product;
+    const last_product = req.body.last_product;    
+
+    /*User pressed next if the last_product was passed*/
+    const user_pressed_next = last_product ? true : false;
 
     try {
         let products = [];
-        const snapshot = await coll.orderBy("name").get();
-        snapshot.forEach(doc => {
-            products.push({id : doc.id, data: doc.data()});
-        })
-        res.setHeader('Cache-Control', 'private');
-        res.render('storefront.ejs', {error: false, products, user: req.decodedIdToken, cartCount});
+
+
+        if (user_pressed_next)
+        {
+            const snapshot = await coll.orderBy("image").startAfter(last_product).limit(11).get();
+
+            /*If there are less than 11 products, that means there are no more products*/
+            let hide_next_button = false;
+            if(snapshot.size < 11)
+            {
+                hide_next_button = true;
+            }
+
+            snapshot.forEach(doc => {
+                products.push({id : doc.id, data: doc.data()});
+            });
+
+            /*To display 10 elements*/
+            if(products.length === 11)
+            {
+                products.pop();
+            }
+
+            let hide_prev_button = false;
+
+            res.setHeader('Cache-Control', 'private');
+            return res.render('storefront.ejs', {error: false, products, user: req.decodedIdToken, cartCount, 
+                                            hide_next_button, hide_prev_button});
+        }
+        else
+        {
+            const snapshot = await coll.orderBy("image", "desc").startAfter(first_product).limit(11).get();
+
+
+            let hide_prev_button = false;
+            if(snapshot.size < 11)
+            {
+                hide_prev_button = true;
+            }
+            
+
+            snapshot.forEach(doc => {
+                products.push({id : doc.id, data: doc.data()});
+            });
+
+            if(products.length === 11)
+            {
+                products.pop();
+            }
+
+            products = products.reverse();
+
+
+            let hide_next_button = false;
+
+            res.setHeader('Cache-Control', 'private');
+            return res.render('storefront.ejs', {error: false, products, user: req.decodedIdToken, cartCount,
+                                            hide_next_button, hide_prev_button});
+        }
     } catch(e) {
         res.setHeader('Cache-Control', 'private');
-        res.render('storefront.ejs', {error: e, user: req.decodedIdToken, cartCount})
+        return res.render('storefront.ejs', {error: e, user: req.decodedIdToken, cartCount})
     }
 })
 
@@ -81,21 +180,21 @@ app.get('/', auth, getCartMiddleWare, async (req, res) => {
 app.get('/b/about', auth, getCartMiddleWare, (req, res) => {
     const cartCount = req.ShoppingCart ? req.ShoppingCart.length : 0;
     res.setHeader('Cache-Control', 'private');
-    res.render('about.ejs', {user: req.decodedIdToken, cartCount});
+    return res.render('about.ejs', {user: req.decodedIdToken, cartCount});
 })
 
 app.get('/b/contact', auth, getCartMiddleWare, (req, res) => {
     const cartCount = req.ShoppingCart ? req.ShoppingCart.length : 0;
     res.setHeader('Cache-Control', 'private');
-    res.render('contact.ejs', {user: req.decodedIdToken, cartCount});
+    return res.render('contact.ejs', {user: req.decodedIdToken, cartCount});
 })
 
 app.get('/b/signin', (req, res) => {
     res.setHeader('Cache-Control', 'private');
-    res.render('signin.ejs', {error: false, user: req.user, cartCount: 0});
+    return res.render('signin.ejs', {error: false, user: req.user, cartCount: 0});
 })
 
-app.post('/b/signin', getCartMiddleWare, async (req, res) => {
+app.post('/b/signin', async (req, res) => {
     const email = req.body.email;
     const password = req.body.password;
 
@@ -108,28 +207,42 @@ app.post('/b/signin', getCartMiddleWare, async (req, res) => {
         await auth.signOut();
 
         req.session.idToken = idToken;
+        
 
         if(userRecord.user.email === Constants.SYSADMINEMAIL)
         {
             res.setHeader('Cache-Control', 'private');
-            res.redirect('/admin/sysadmin');
+            return res.redirect('/admin/sysadmin');
         }
         else
         {
-            if (!req.ShoppingCart)
+            var cart_exists = false;
+            docRef = firebase.firestore().collection('shopping_carts').doc(userRecord.user.uid);
+            await docRef.get().then( doc => {
+                if (doc.exists)
+                {
+                    cart_exists = true;
+                }
+                return;
+            });
+
+            if(cart_exists)
             {
+                req.session.signedIn_cart_not_empty = true;
                 res.setHeader('Cache-Control', 'private');
-                res.redirect('/');
+                return res.redirect('/')
             }
             else
             {
                 res.setHeader('Cache-Control', 'private');
-                res.redirect('/b/shoppingcart')
+                return res.redirect('/');
             }
+
         }
+
     } catch(e) {
         res.setHeader('Cache-Control', 'private');
-        res.render('signin.ejs', {error: e, user: null, cartCount: 0});
+        return res.render('signin.ejs', {error: e, user: null, cartCount: 0});
     }
 })
 
@@ -140,11 +253,11 @@ app.get('/b/signout', async (req, res) => {
         if (err)
         {
             req.session = null;
-            res.send('Error: sign out (session.destroy error)')
+            return res.send('Error: sign out (session.destroy error)')
         }
         else
         {
-            res.redirect('/');
+            return res.redirect('/');
         }
     });
 
@@ -154,13 +267,13 @@ app.get('/b/signout', async (req, res) => {
 app.get('/b/profile', authAndRedirectSignIn, getCartMiddleWare, (req, res) => {
     const cartCount = req.ShoppingCart ? req.ShoppingCart.length : 0;
     res.setHeader('Cache-Control', 'private');
-    res.render('profile', {user: req.decodedIdToken, cartCount, orders: false});
+    return res.render('profile', {user: req.decodedIdToken, cartCount, orders: false});
 })
 
 
 app.get('/b/signup', (req, res) => {
 
-    res.render('signup.ejs', {page: 'signup', user: null, error: false, cartCount: 0});
+    return res.render('signup.ejs', {page: 'signup', user: null, error: false, cartCount: 0});
 
 })
 
@@ -222,7 +335,7 @@ app.get('/b/shoppingcart', authAndRedirectSignIn, getCartMiddleWare, async (req,
         cart = ShoppingCart.deserialize(req.ShoppingCart);
     }
     res.setHeader('Cache-Control', 'private');
-    res.render('shoppingcart.ejs', {message: false, cart, user: req.decodedIdToken, cartCount: cart.contents.length});
+    return res.render('shoppingcart.ejs', {message: false, cart, user: req.decodedIdToken, cartCount: cart.contents.length});
 })
 
 app.post('/b/checkout', authAndRedirectSignIn, getCartMiddleWare, async (req, res) => {
@@ -264,10 +377,10 @@ app.get('/b/orderhistory', authAndRedirectSignIn, async (req, res) => {
 
         const orders = await adminUtil.getOrderHistory(req.decodedIdToken);
         res.setHeader('Cache-Control', 'private');
-        res.render('profile.ejs', {user: req.decodedIdToken, cartCount: 0, orders})
+        return res.render('profile.ejs', {user: req.decodedIdToken, cartCount: 0, orders})
     } catch(e) {
         res.setHeader('Cache-Control', 'private');
-        res.send("<h1>Order History Error</h1>");
+        return res.send("<h1>Order History Error</h1>");
     }
 })
 
@@ -278,10 +391,13 @@ async function authAndRedirectSignIn(req, res, next)
 
     try {
         const decodedIdToken = await adminUtil.verifyIdToken(req.session.idToken);
-        if (decodedIdToken.uid)
+        if (decodedIdToken)
         {
-            req.decodedIdToken = decodedIdToken;
-            return next();
+            if (decodedIdToken.uid)
+            {
+                req.decodedIdToken = decodedIdToken;
+                return next();
+            }
         }
     } catch (e) {
         console.log('authAndRedirect error', e)    
@@ -322,11 +438,9 @@ async function getCartMiddleWare(req, res, next)
             req.ShoppingCart = null;
 
             cart_data = await adminUtil.getCartData(req.decodedIdToken.uid);
-            console.log("%%%%%%11111" + JSON.stringify(cart_data));
 
             if(cart_data)
             {
-                console.log("%%%%%%22222" + JSON.stringify(cart_data));
                 cart = new ShoppingCart();
                 cart_data.forEach(d => {
                     for(i = 0; i < d.qty; i++)
@@ -337,17 +451,13 @@ async function getCartMiddleWare(req, res, next)
 
                 req.ShoppingCart = cart.serialize();
 
-                console.log("%%%%%%%3333333" + JSON.stringify(req.ShoppingCart));
-
             }
         }
         else
         {
-            console.log('@@@@@@@UID NOT FOUND!@@@@@@@@')
             req.ShoppingCart = null;
         }
     } catch(e) {
-        console.log('@@@@@@@ERRRORRR!@@@@@@@@')
         req.ShoppingCart = null;
     }
 
@@ -362,7 +472,7 @@ app.post('/admin/signup', (req, res) => {
 })
 
 app.get('/admin/sysadmin', authSysAdmin, (req, res) => {
-    res.render('admin/sysadmin.ejs')
+    return res.render('admin/sysadmin.ejs')
 })
 
 app.get('/admin/listUsers', authSysAdmin, (req, res) => {

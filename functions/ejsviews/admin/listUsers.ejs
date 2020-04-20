@@ -22,9 +22,9 @@
         <% users.forEach(u => { %>
 
             Email: <%= u.email %><br>
-            DisplayName: <%= u.displayName %><br>
-            PhoneNumber <%= u.phoneNumber %><br>
-            <img src="<%= u.photoURL %>"><br><br>
+            DisplayName: <%= u.name %><br>
+            PhoneNumber: <%= u.phone_number %><br>
+            <img src="<%= u.picture %>"><br><br>
         <% }) %>
     <% } else { %>
         <%= error %>
