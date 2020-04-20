@@ -103,7 +103,6 @@ async function getCartData(id)
     try {
         const collection = admin.firestore().collection('shopping_carts');
         const cart = await collection.doc(id).get();
-        console.log("%%%%%%000000" + JSON.stringify(cart.data().cart))
         return cart.data().cart;
     } catch (e) {
         throw e;

@@ -138,7 +138,7 @@ app.post('/', auth, getCartMiddleWare, async (req, res) => {
 
             res.setHeader('Cache-Control', 'private');
             return res.render('storefront.ejs', {error: false, products, user: req.decodedIdToken, cartCount, 
-                                            hide_next_button, hide_prev_button});
+                                            hide_next_button, hide_prev_button, signedIn_cart_not_empty: false});
         }
         else
         {
@@ -168,7 +168,7 @@ app.post('/', auth, getCartMiddleWare, async (req, res) => {
 
             res.setHeader('Cache-Control', 'private');
             return res.render('storefront.ejs', {error: false, products, user: req.decodedIdToken, cartCount,
-                                            hide_next_button, hide_prev_button});
+                                            hide_next_button, hide_prev_button, signedIn_cart_not_empty: false});
         }
     } catch(e) {
         res.setHeader('Cache-Control', 'private');
