@@ -86,7 +86,7 @@ app.get('/', auth, getCartMiddleWare, async (req, res) => {
 
         let hide_prev_button = true;
 
-        signedIn_cart_not_empty = req.session.signedIn_cart_not_empty ? true : false;
+        let signedIn_cart_not_empty = req.session.signedIn_cart_not_empty ? true : false;
         req.session.signedIn_cart_not_empty = null;
 
         res.setHeader('Cache-Control', 'private');
