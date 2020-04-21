@@ -289,22 +289,19 @@ app.post('/b/add2cart', auth, getCartMiddleWare, async (req, res) => {
     }
 
     const id = req.body.docId;
-    console.log('=========111111===============');
     const collection = firebase.firestore().collection(Constants.COLL_PRODUCTS);
     try {
         const doc = await collection.doc(id).get();
-        console.log('=========2222222222===============');
 
         let cart;
         if (!req.ShoppingCart) {
-            console.log('---------------empty!-----------------')
+
             //first time add to cart
             cart = new ShoppingCart();
         } else {
             cart = ShoppingCart.deserialize(req.ShoppingCart);
         }
 
-        console.log('=========3333333===============');
 
         const {name, price, summary, image, image_url} = doc.data();
         cart.add({id, name, price, summary, image, image_url});
@@ -437,7 +434,7 @@ async function getCartMiddleWare(req, res, next)
         {
             req.ShoppingCart = null;
 
-            cart_data = await adminUtil.getCartData(req.decodedIdToken.uid);
+            let cart_data = await adminUtil.getCartData(req.decodedIdToken.uid);
 
             if(cart_data)
             {
